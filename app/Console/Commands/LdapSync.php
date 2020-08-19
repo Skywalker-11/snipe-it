@@ -138,6 +138,7 @@ class LdapSync extends Command
         return $this->getSummary();
     }
 
+<<<<<<< HEAD
     /**
      * Generate the LDAP sync summary.
      *
@@ -164,11 +165,24 @@ class LdapSync extends Command
                 'summary' => $this->summary->toArray(),
             ];
             $this->info(json_encode($json_summary));
+=======
+        try {
+            $ldap = new LdapAd();
+            $ldap->init();
+        } catch (\Exception $e) {
+            if ($this->option('json_summary')) {
+                $json_summary = [ "error" => true, "error_message" => $e->getMessage(), "summary" => [] ];
+                $this->info(json_encode($json_summary));
+            }
+            LOG::info($e);
+            return [];
+>>>>>>> 49eb9fa79... ldap php7.4
         }
 
         return '';
     }
 
+<<<<<<< HEAD
     /**
      * Create a new user or update an existing user.
      *
@@ -203,9 +217,28 @@ class LdapSync extends Command
                     $summary['note']   = $snipeUser->getDN().' was not imported. REASON: '.$errors;
                     $summary['status'] = 'ERROR';
                 }
+=======
+        try {
+            if ($this->option('base_dn') != '') {
+                $ldap->baseDn = $this->option('base_dn');
+                LOG::debug('Importing users from specified base DN: \"'.$this->option('base_dn').'\".');
+>>>>>>> 49eb9fa79... ldap php7.4
             } else {
                 $summary = null;
             }
+<<<<<<< HEAD
+=======
+            $ldapusers = $ldap->getLdapUsers();
+            $results = $ldapusers->getResults();
+            $results["count"] = $ldapusers->count();
+        } catch (\Exception $e) {
+            if ($this->option('json_summary')) {
+                $json_summary = [ "error" => true, "error_message" => $e->getMessage(), "summary" => [] ];
+                $this->info(json_encode($json_summary));
+            }
+            LOG::info($e);
+            return [];
+>>>>>>> 49eb9fa79... ldap php7.4
         }
 
         // $summary['note'] = ($user->getOriginal('username') ? 'UPDATED' : 'CREATED'); // this seems, kinda, like, superfluous, relative to the $summary['note'] thing above, yeah?
@@ -266,9 +299,34 @@ class LdapSync extends Command
                 $this->info($msg);
             }
 
+<<<<<<< HEAD
             $this->mappedLocations = $locations->pluck('ldap_ou', 'id'); // TODO: this seems ok-ish, but the key-> value is going location_id -> OU name, and the primary action here is the opposite of that - going from OU's to location ID's.
         }
     }
+=======
+            // Grab subsets based on location-specific DNs, and overwrite location for these users.
+            foreach ($ldap_ou_locations as $ldap_loc) {
+                $location_users = Ldap::findLdapUsers($ldap_loc["ldap_ou"]);
+                $usernames = array();
+                for ($i = 0; $i < $location_users["count"]; $i++) {
+
+                    if (isset($location_users[$i][$ldap_result_username])) {
+                        $location_users[$i]["ldap_location_override"] = true;
+                        $location_users[$i]["location_id"] = $ldap_loc["id"];
+                        $usernames[] = $location_users[$i][$ldap_result_username][0];
+                    }
+
+                }
+
+                // Delete located users from the general group.
+                foreach ($results as $key => $generic_entry) {
+                   if ((is_array($generic_entry)) && (isset($generic_entry[$ldap_result_username]))) {
+                        if (in_array($generic_entry[$ldap_result_username][0], $usernames)) {
+                            unset($results[$key]);
+                        }
+                    }
+                }
+>>>>>>> 49eb9fa79... ldap php7.4
 
     /**
      * Set the base dn if supplied.
@@ -289,6 +347,7 @@ class LdapSync extends Command
         }
     }
 
+<<<<<<< HEAD
     /**
      * Get a default location id for imported users.
      *
@@ -320,6 +379,79 @@ class LdapSync extends Command
                 LOG::error($msg);
                 if ($this->dryrun) {
                     $this->error($msg);
+=======
+        /* Create user account entries in Snipe-IT */
+        $tmp_pass = substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 20);
+        $pass = bcrypt($tmp_pass);
+
+        for ($i = 0; $i < $results["count"]; $i++) {
+            if (empty($ldap_result_active_flag) || $results[$i][$ldap_result_active_flag][0] == "TRUE") {
+
+                $item = array();
+                $item["username"] = isset($results[$i][$ldap_result_username][0]) ? $results[$i][$ldap_result_username][0] : "";
+                $item["employee_number"] = isset($results[$i][$ldap_result_emp_num][0]) ? $results[$i][$ldap_result_emp_num][0] : "";
+                $item["lastname"] = isset($results[$i][$ldap_result_last_name][0]) ? $results[$i][$ldap_result_last_name][0] : "";
+                $item["firstname"] = isset($results[$i][$ldap_result_first_name][0]) ? $results[$i][$ldap_result_first_name][0] : "";
+                $item["email"] = isset($results[$i][$ldap_result_email][0]) ? $results[$i][$ldap_result_email][0] : "" ;
+                $item["ldap_location_override"] = isset($results[$i]["ldap_location_override"]) ? $results[$i]["ldap_location_override"][0]:"";
+                $item["location_id"] = isset($results[$i]["location_id"]) ? $results[$i]["location_id"]:"";
+
+                $user = User::where('username', $item["username"])->first();
+                if ($user) {
+                    // Updating an existing user.
+                    $item["createorupdate"] = 'updated';
+                } else {
+                    // Creating a new user.
+                    $user = new User;
+                    $user->password = $pass;
+                    $user->activated = 0;
+                    $item["createorupdate"] = 'created';
+                }
+
+                $user->first_name = $item["firstname"];
+                $user->last_name = $item["lastname"];
+                $user->username = $item["username"];
+                $user->email = $item["email"];
+                $user->employee_num = e($item["employee_number"]);
+
+                // Sync activated state for Active Directory.
+                if ( isset($results[$i]['useraccountcontrol']) ) {
+                  $enabled_accounts = [
+                    '512', '544', '66048', '66080', '262656', '262688', '328192', '328224', '4260352'
+                  ];
+                  $user->activated = ( in_array($results[$i]['useraccountcontrol'][0], $enabled_accounts) ) ? 1 : 0;
+                }
+
+                // If we're not using AD, and there isn't an activated flag set, activate all users
+                elseif (empty($ldap_result_active_flag)) {
+                  $user->activated = 1;
+                }
+
+                if ($item['ldap_location_override'] == true) {
+                    $user->location_id = $item['location_id'];
+                } elseif ((isset($location)) && (!empty($location))) {
+
+                    if ((is_array($location)) && (isset($location['id']))) {
+                        $user->location_id = $location['id'];
+                    } elseif (is_object($location)) {
+                        $user->location_id = $location->id;
+                    }
+
+                }
+
+                $user->ldap_import = 1;
+
+                $errors = '';
+                if ($user->save()) {
+                    $item["note"] = $item["createorupdate"];
+                    $item["status"]='success';
+                } else {
+                    foreach ($user->getErrors()->getMessages() as $key => $err) {
+                        $errors .= $err[0];
+                    }
+                    $item["note"] = $errors;
+                    $item["status"]='error';
+>>>>>>> 49eb9fa79... ldap php7.4
                 }
                 exit(0);
             }
