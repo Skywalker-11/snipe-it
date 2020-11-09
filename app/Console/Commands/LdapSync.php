@@ -222,12 +222,18 @@ class LdapSync extends Command
             if ($this->option('base_dn') != '') {
                 $ldap->baseDn = $this->option('base_dn');
                 LOG::debug('Importing users from specified base DN: \"'.$this->option('base_dn').'\".');
+<<<<<<< HEAD
 >>>>>>> 49eb9fa79... ldap php7.4
+=======
+>>>>>>> 49eb9fa798292097310f4b997ae16427567f4b89
             } else {
                 $summary = null;
             }
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> 49eb9fa798292097310f4b997ae16427567f4b89
             $ldapusers = $ldap->getLdapUsers();
             $results = $ldapusers->getResults();
             $results["count"] = $ldapusers->count();
