@@ -98,8 +98,6 @@ class SettingsSamlRequest extends FormRequest
                 $pkey = openssl_pkey_get_private($custom_privateKey);
             } elseif ($this->input('saml_sp_regenerate_keypair') == '1' || !$this->has('saml_sp_x509cert') || $was_custom_x509cert) {
                 // key regeneration requested, no certificate defined yet or previous custom certicate was removed
-error_log("regen");
-                $cert_updated=true;
                 $dn = [
                     "countryName" => "US",
                     "stateOrProvinceName" => "N/A",
@@ -112,29 +110,32 @@ error_log("regen");
                     "private_key_bits" => 2048,
                     "private_key_type" => OPENSSL_KEYTYPE_RSA,
                 ]);
-                
+
                 $csr = openssl_csr_new($dn, $pkey, ['digest_alg' => 'sha256']);
 
                 if ($csr) {
 
                     $x509 = openssl_csr_sign($csr, null, $pkey, 3650, ['digest_alg' => 'sha256']);
-
-                    openssl_x509_export($x509, $x509cert);
-                    openssl_pkey_export($pkey, $privateKey);
-
-                    $errors = [];
-                    while (($error = openssl_error_string() !== false)) {
-                        $errors[] = $error;
-                    }
-        
-                    if (!(empty($x509cert) && empty($privateKey))) {
-                        $this->merge([
-                            'saml_sp_x509cert' => $x509cert,
-                            'saml_sp_privatekey' => $privateKey,
-                        ]);
-                    }
+                    $cert_updated=true;
                 } else {
                     $validator->errors()->add('saml_integration', 'openssl.cnf is missing/invalid');
+                }
+            }
+
+            if ($cert_updated) {
+                openssl_x509_export($x509, $x509cert);
+                openssl_pkey_export($pkey, $privateKey);
+
+                $errors = [];
+                while (($error = openssl_error_string() !== false)) {
+                    $errors[] = $error;
+                }
+
+                if (!(empty($x509cert) && empty($privateKey))) {
+                    $this->merge([
+                        'saml_sp_x509cert' => $x509cert,
+                        'saml_sp_privatekey' => $privateKey,
+                    ]);
                 }
             }
 
